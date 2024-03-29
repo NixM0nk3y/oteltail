@@ -1,4 +1,4 @@
-package main
+package promtail
 
 import (
 	"bytes"
@@ -10,9 +10,11 @@ import (
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"oteltail/internal/config"
+	"oteltail/internal/utils"
 )
 
 func parseKinesisEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) error {
@@ -28,7 +30,7 @@ func parseKinesisEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) 
 			model.LabelName("__aws_kinesis_event_source_arn"): model.LabelValue(record.EventSourceArn),
 		}
 
-		labels = applyLabels(labels)
+		labels = utils.ApplyLabels(ctx, labels)
 
 		// Check if the data is gzipped by inspecting the 'data' field
 		if isGzipped(record.Kinesis.Data) {
@@ -51,7 +53,7 @@ func parseKinesisEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) 
 	return nil
 }
 
-func CwParse(rawData []byte, ev *events.CloudwatchLogsData) (err error) {
+func cwParse(rawData []byte, ev *events.CloudwatchLogsData) (err error) {
 
 	rdata := bytes.NewReader(rawData)
 	r, err := gzip.NewReader(rdata)
@@ -78,7 +80,7 @@ func parseKinesisCwEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent
 	for _, record := range ev.Records {
 		var cwEvents events.CloudwatchLogsData
 
-		err := CwParse(record.Kinesis.Data, &cwEvents)
+		err := cwParse(record.Kinesis.Data, &cwEvents)
 		if err != nil {
 			return err
 		}
@@ -89,11 +91,11 @@ func parseKinesisCwEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent
 			model.LabelName("__aws_cloudwatch_owner"):     model.LabelValue(cwEvents.Owner),
 		}
 
-		if keepStream {
+		if config.GetConfig(ctx).KeepStream {
 			labels[model.LabelName("__aws_cloudwatch_log_stream")] = model.LabelValue(cwEvents.LogStream)
 		}
 
-		labels = applyLabels(labels)
+		labels = utils.ApplyLabels(ctx, labels)
 
 		for _, event := range cwEvents.LogEvents {
 			timestamp := time.UnixMilli(event.Timestamp)
@@ -110,7 +112,7 @@ func parseKinesisCwEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent
 	return nil
 }
 
-func processKinesisEvent(ctx context.Context, ev *events.KinesisEvent, pClient Client) error {
+func ProcessKinesisEvent(ctx context.Context, ev *events.KinesisEvent, pClient Client) error {
 	batch, _ := newBatch(ctx, pClient)
 
 	err := parseKinesisEvent(ctx, batch, ev)
@@ -118,14 +120,14 @@ func processKinesisEvent(ctx context.Context, ev *events.KinesisEvent, pClient C
 		return err
 	}
 
-	err = pClient.sendToPromtail(ctx, batch)
+	err = pClient.sendToOtel(ctx, batch)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func processKinesisCwEvent(ctx context.Context, ev *events.KinesisEvent, pClient Client) error {
+func ProcessKinesisCwEvent(ctx context.Context, ev *events.KinesisEvent, pClient Client) error {
 	batch, _ := newBatch(ctx, pClient)
 
 	err := parseKinesisCwEvent(ctx, batch, ev)
@@ -133,7 +135,7 @@ func processKinesisCwEvent(ctx context.Context, ev *events.KinesisEvent, pClient
 		return err
 	}
 
-	err = pClient.sendToPromtail(ctx, batch)
+	err = pClient.sendToOtel(ctx, batch)
 	if err != nil {
 		return err
 	}

@@ -2,11 +2,13 @@
 # ----------
 
 # Go parameters
-GOCMD=go
+GOCMD=GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go
 GOBUILD=$(GOCMD) build
 GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get
+
+export SAM_CLI_TELEMETRY=0
 
 VERSION=1.0
 
@@ -21,19 +23,26 @@ export AWS_REGION ?= eu-west-1
 TASK_DONE = echo "✓  $@ done"
 TASK_BUILD = echo "🛠️  $@ done"
 
-export CODEBUILD_BUILD_NUMBER ?= 0
-export CODEBUILD_RESOLVED_SOURCE_VERSION ?=$(shell git rev-list -1 HEAD --abbrev-commit)
+export CODE_BUILD_NUMBER ?= 0
+export CODE_RESOLVED_SOURCE_VERSION ?=$(shell git rev-list -1 HEAD --abbrev-commit)
 export BUILD_DATE=$(shell date -u '+%Y%m%d')
 
 # ----------------
-.DEFAULT_GOAL := help
+.DEFAULT_GOAL := lambda/build
 
 lambda/build: ## build the lambda
-	go build -o ./bootstrap lambda-oteltail/*.go
+	$(GOBUILD)  -ldflags " \
+		-X oteltail/pkg/version.Version=${VERSION}.${CODE_BUILD_NUMBER} \
+		-X oteltail/pkg/version.BuildHash=${CODE_RESOLVED_SOURCE_VERSION} \
+		-X oteltail/pkg/version.BuildDate=${BUILD_DATE}" -o ./bootstrap -v cmd/oteltail-lambda/*.go
 	@$(TASK_BUILD)
 
 lambda/test: lambda/build ## Test a local invoke of the lambda.
-	@sam local invoke Lambda --event test/kinesis-cwevent.json --template test/template.yaml --env-vars test/environment.json  --region $(AWS_REGION)
+	@sam local invoke Lambda --event ./test/eventbridge-s3.json --template test/template.yaml --debug --env-vars test/environment.json  --region $(AWS_REGION)
+	@$(TASK_BUILD)
+
+build-Lambda: lambda/build
+	cp ./bootstrap ${ARTIFACTS_DIR}/
 	@$(TASK_BUILD)
 
 test: 

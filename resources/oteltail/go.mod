@@ -1,19 +1,23 @@
-module main
+module oteltail
 
-go 1.19
+go 1.21
 
 require (
 	github.com/aws/aws-lambda-go v1.26.0
 	github.com/aws/aws-sdk-go-v2 v1.16.0
 	github.com/aws/aws-sdk-go-v2/config v1.15.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.22.0
-	github.com/go-kit/log v0.2.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
 	github.com/grafana/dskit v0.0.0-20230201083518-528d8a7d52f2
 	github.com/grafana/loki v1.6.2-0.20230216091802-4e4359e67c6c
 	github.com/prometheus/common v0.39.0
-	github.com/stretchr/testify v1.8.1
+	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2
+)
+
+require (
+	github.com/go-kit/log v0.2.1 // indirect
+	github.com/stretchr/testify v1.8.1 // indirect
 )
 
 require (
@@ -64,6 +68,7 @@ require (
 	github.com/hashicorp/serf v0.10.1 // indirect
 	github.com/jpillora/backoff v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
+	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.4 // indirect

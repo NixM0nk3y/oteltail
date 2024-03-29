@@ -6,12 +6,16 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: bootstrap
-      Runtime: provided.al2
+      Runtime: provided.al2023
       CodeUri: ../
       Timeout: 300
+      MemorySize: 1024
+      Architectures:
+        - arm64
       Environment:
         Variables:
           LOG_LEVEL: INFO
-          PRINT_LOG_LINE: true
-          PARSE_KINESIS_CWLOGS: true
+          PRINT_LOG_LINES: true
           WRITE_ADDRESS: https://httpbin.org/post
+    Metadata:
+      BuildMethod: makefile

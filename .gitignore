@@ -12,3 +12,4 @@ resources/aws-lambda-web-adapter
 .cdk.staging
 cdk.out
 cdk.context.json
+.aws-sam

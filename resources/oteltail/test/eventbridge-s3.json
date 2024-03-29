@@ -1,0 +1,28 @@
+{
+    "version": "0",
+    "id": "745bfbe0-7e2b-0ba7-59f9-99579a145085",
+    "detail-type": "Object Created",
+    "source": "aws.s3",
+    "account": "074705540277",
+    "time": "2024-03-29T15:25:07Z",
+    "region": "eu-west-1",
+    "resources": [
+        "arn:aws:s3:::abcoteltailproduction-oteltailalbloggingbucket1a35-dyqpzavp3zeu"
+    ],
+    "detail": {
+        "version": "0",
+        "bucket": {
+            "name": "abcoteltailproduction-oteltailalbloggingbucket1a35-dyqpzavp3zeu"
+        },
+        "object": {
+            "key": "albLogs/AWSLogs/074705540277/elasticloadbalancing/eu-west-1/2024/03/29/074705540277_elasticloadbalancing_eu-west-1_app.AbcOte-otelT-SfFl9Au1dc92.fc775e29f21bed43_20240329T1525Z_52.50.159.82_17aeo1c4.log.gz",
+            "size": 1206,
+            "etag": "389a3a510a5ddc3c9d0749c76f9dcf86",
+            "sequencer": "006606DD534F3C4ED3"
+        },
+        "request-id": "CB4TN59QMHWWCRH0",
+        "requester": "156460612806",
+        "source-ip-address": "2a05:d018:b33:3d02:48d3:f530:ee35:5137",
+        "reason": "PutObject"
+    }
+}

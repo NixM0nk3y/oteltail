@@ -1,4 +1,4 @@
-package main
+package promtail
 
 import (
 	"context"
@@ -6,9 +6,11 @@ import (
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"oteltail/internal/config"
+	"oteltail/internal/utils"
 )
 
 func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent) error {
@@ -23,11 +25,11 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 		model.LabelName("__aws_cloudwatch_owner"):     model.LabelValue(data.Owner),
 	}
 
-	if keepStream {
+	if config.GetConfig(ctx).KeepStream {
 		labels[model.LabelName("__aws_cloudwatch_log_stream")] = model.LabelValue(data.LogStream)
 	}
 
-	labels = applyLabels(labels)
+	labels = utils.ApplyLabels(ctx, labels)
 
 	for _, event := range data.LogEvents {
 		timestamp := time.UnixMilli(event.Timestamp)
@@ -43,7 +45,7 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 	return nil
 }
 
-func processCWEvent(ctx context.Context, ev *events.CloudwatchLogsEvent, pClient Client) error {
+func ProcessCWEvent(ctx context.Context, ev *events.CloudwatchLogsEvent, pClient Client) error {
 	batch, err := newBatch(ctx, pClient)
 	if err != nil {
 		return err
@@ -54,7 +56,7 @@ func processCWEvent(ctx context.Context, ev *events.CloudwatchLogsEvent, pClient
 		return fmt.Errorf("error parsing log event: %s", err)
 	}
 
-	err = pClient.sendToPromtail(ctx, batch)
+	err = pClient.sendToOtel(ctx, batch)
 	if err != nil {
 		return err
 	}

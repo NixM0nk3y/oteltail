@@ -1,34 +1,30 @@
-package main
+package promtail
 
 import (
-	"bufio"
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"net/http"
 	"sort"
 	"strings"
-	"time"
 
-	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/logproto"
+	"oteltail/internal/config"
+	"oteltail/internal/logger"
 )
 
 const (
-	timeout    = 5 * time.Second
-	minBackoff = 100 * time.Millisecond
-	maxBackoff = 30 * time.Second
-	maxRetries = 10
-
 	reservedLabelTenantID = "__tenant_id__"
 
 	userAgent = "lambda-promtail"
+
+	// We use snappy-encoded protobufs over http by default.
+	contentType = "application/x-protobuf"
+
+	maxErrMsgLen = 1024
 )
 
 type entry struct {
@@ -78,7 +74,7 @@ func (b *batch) add(ctx context.Context, e entry) error {
 	stream.Entries = append(stream.Entries, e.entry)
 	b.size += len(e.entry.Line)
 
-	if b.size > batchSize {
+	if b.size > config.GetConfig(ctx).BatchSize {
 		return b.flushBatch(ctx)
 	}
 
@@ -127,7 +123,7 @@ func (b *batch) createPushRequest() (*logproto.PushRequest, int) {
 
 func (b *batch) flushBatch(ctx context.Context) error {
 	if b.client != nil {
-		err := b.client.sendToPromtail(ctx, b)
+		err := b.client.sendToOtel(ctx, b)
 		if err != nil {
 			return err
 		}
@@ -142,23 +138,26 @@ func (b *batch) resetBatch() {
 	b.size = 0
 }
 
-func (c *promtailClient) sendToPromtail(ctx context.Context, b *batch) error {
+func (c *OtelClient) sendToOtel(ctx context.Context, b *batch) error {
+
+	log := logger.GetLogger(ctx)
+
 	buf, _, err := b.encode()
 	if err != nil {
 		return err
 	}
 
-	backoff := backoff.New(ctx, *c.config.backoff)
+	backoff := backoff.New(ctx, *c.Config.Backoff)
 	var status int
 	for {
 		// send uses `timeout` internally, so `context.Background` is good enough.
-		status, err = c.send(context.Background(), buf)
+		status, err = c.send(ctx, buf)
 
 		// Only retry 429s, 500s and connection-level errors.
 		if status > 0 && status != 429 && status/100 != 5 {
 			break
 		}
-		level.Error(*c.log).Log("err", fmt.Errorf("error sending batch, will retry, status: %d error: %s\n", status, err))
+		log.Error(fmt.Sprintf("error sending batch, will retry, status: %d", status), "error", err)
 		backoff.Wait()
 
 		// Make sure it sends at least once before checking for retry.
@@ -168,49 +167,18 @@ func (c *promtailClient) sendToPromtail(ctx context.Context, b *batch) error {
 	}
 
 	if err != nil {
-		level.Error(*c.log).Log("err", fmt.Errorf("Failed to send logs! %s\n", err))
+		log.Error("Failed to send logs!", "error", err)
 		return err
 	}
 
 	return nil
 }
 
-func (c *promtailClient) send(ctx context.Context, buf []byte) (int, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.config.http.timeout)
-	defer cancel()
+func (c *OtelClient) send(ctx context.Context, buf []byte) (int, error) {
 
-	req, err := http.NewRequest("POST", writeAddress.String(), bytes.NewReader(buf))
-	if err != nil {
-		return -1, err
-	}
-	req.Header.Set("Content-Type", contentType)
-	req.Header.Set("User-Agent", userAgent)
+	log := logger.GetLogger(ctx)
 
-	if tenantID != "" {
-		req.Header.Set("X-Scope-OrgID", tenantID)
-	}
+	log.InfoContext(ctx, "sending")
 
-	if username != "" && password != "" {
-		req.SetBasicAuth(username, password)
-	}
-
-	if bearerToken != "" {
-		req.Header.Set("Authorization", "Bearer "+bearerToken)
-	}
-
-	resp, err := c.http.Do(req.WithContext(ctx))
-	if err != nil {
-		return -1, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode/100 != 2 {
-		scanner := bufio.NewScanner(io.LimitReader(resp.Body, maxErrMsgLen))
-		line := ""
-		if scanner.Scan() {
-			line = scanner.Text()
-		}
-		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, resp.StatusCode, line)
-	}
-
-	return resp.StatusCode, err
+	return 200, nil
 }

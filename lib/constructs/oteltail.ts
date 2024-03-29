@@ -7,8 +7,12 @@ import {
     DesyncMitigationMode,
     IpAddressType,
 } from "aws-cdk-lib/aws-elasticloadbalancingv2";
-import { Bucket, BlockPublicAccess } from "aws-cdk-lib/aws-s3";
-import { CfnOutput, Duration } from "aws-cdk-lib";
+import { Bucket, BlockPublicAccess, StorageClass } from "aws-cdk-lib/aws-s3";
+import { CfnOutput, Duration, DockerImage, RemovalPolicy } from "aws-cdk-lib";
+import { Function, Runtime, Code, Architecture, Tracing } from "aws-cdk-lib/aws-lambda";
+import { RetentionDays } from "aws-cdk-lib/aws-logs";
+import { Rule } from "aws-cdk-lib/aws-events";
+import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
 
 export interface OtelTailProps {
     readonly tenant: string;
@@ -22,10 +26,23 @@ export class OtelTail extends Construct {
         super(scope, id);
 
         const loggingBucket = new Bucket(this, "albLoggingBucket", {
+            removalPolicy: RemovalPolicy.DESTROY,
             versioned: false,
             publicReadAccess: false,
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
             eventBridgeEnabled: true,
+            lifecycleRules: [
+                {
+                    abortIncompleteMultipartUploadAfter: Duration.days(7),
+                    expiration: Duration.days(90),
+                    transitions: [
+                        {
+                            storageClass: StorageClass.INFREQUENT_ACCESS,
+                            transitionAfter: Duration.days(30),
+                        },
+                    ],
+                },
+            ],
         });
 
         const alb = new ApplicationLoadBalancer(this, "alb", {
@@ -65,7 +82,48 @@ export class OtelTail extends Construct {
             }),
         });
 
-        // 👇 add the ALB DNS as an Output
+        const otelTailFunction = new Function(this, "Lambda", {
+            runtime: Runtime.PROVIDED_AL2023,
+            handler: "bootstrap",
+            architecture: Architecture.ARM_64,
+            code: Code.fromAsset("./resources/lambda-promtail-otel", {
+                bundling: {
+                    image: DockerImage.fromBuild("./resources/buildimage"),
+                    command: [...["make", "build-Lambda"]],
+                    environment: {
+                        HOME: "/tmp",
+                        ARTIFACTS_DIR: "/asset-output",
+                    },
+                },
+            }),
+            environment: {
+                LOG_LEVEL: "INFO",
+                PRINT_LOG_LINE: "true",
+                WRITE_ADDRESS: "https://httpbin.org/post",
+            },
+            tracing: Tracing.ACTIVE,
+            logRetention: RetentionDays.ONE_WEEK,
+            memorySize: 512,
+            timeout: Duration.seconds(300),
+        });
+
+        loggingBucket.grantRead(otelTailFunction);
+
+        const objectCreatedRule = new Rule(this, "objectCreatedRule", {
+            description: "object created",
+            eventPattern: {
+                source: ["aws.s3"],
+                detailType: ["Object Created"],
+                detail: {
+                    bucket: {
+                        name: [loggingBucket.bucketName],
+                    },
+                },
+            },
+        });
+
+        objectCreatedRule.addTarget(new LambdaFunction(otelTailFunction));
+
         new CfnOutput(this, "albDNS", {
             value: alb.loadBalancerDnsName,
         });
