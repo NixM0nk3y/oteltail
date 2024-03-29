@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import 'source-map-support/register';
-import * as cdk from 'aws-cdk-lib';
-import { GossipyKeyValStack } from '../lib/oteltail-stack';
+import "source-map-support/register";
+import * as cdk from "aws-cdk-lib";
+import { OtelTailStack } from "../lib/oteltail-stack";
 
 function capitalise(s: string): string {
     return s[0].toUpperCase() + s.substr(1).toLowerCase();
