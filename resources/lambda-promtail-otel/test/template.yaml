@@ -1,0 +1,17 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Template for Lambda functions
+Resources:
+  Lambda:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: bootstrap
+      Runtime: provided.al2
+      CodeUri: ../
+      Timeout: 300
+      Environment:
+        Variables:
+          LOG_LEVEL: INFO
+          PRINT_LOG_LINE: true
+          PARSE_KINESIS_CWLOGS: true
+          WRITE_ADDRESS: https://httpbin.org/post
