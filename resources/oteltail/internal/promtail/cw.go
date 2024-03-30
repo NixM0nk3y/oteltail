@@ -10,10 +10,11 @@ import (
 	"github.com/prometheus/common/model"
 
 	"oteltail/internal/config"
+	"oteltail/internal/otelclient"
 	"oteltail/internal/utils"
 )
 
-func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent) error {
+func parseCWEvent(ctx context.Context, b *otelclient.Batch, ev *events.CloudwatchLogsEvent) error {
 	data, err := ev.AWSLogs.Parse()
 	if err != nil {
 		return err
@@ -29,12 +30,12 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 		labels[model.LabelName("__aws_cloudwatch_log_stream")] = model.LabelValue(data.LogStream)
 	}
 
-	labels = utils.ApplyLabels(ctx, labels)
+	labels = utils.ApplyResourceAttributes(ctx, labels)
 
 	for _, event := range data.LogEvents {
 		timestamp := time.UnixMilli(event.Timestamp)
 
-		if err := b.add(ctx, entry{labels, logproto.Entry{
+		if err := b.Add(ctx, otelclient.LogEntry{Labels: labels, Entry: logproto.Entry{
 			Line:      event.Message,
 			Timestamp: timestamp,
 		}}); err != nil {
@@ -45,8 +46,8 @@ func parseCWEvent(ctx context.Context, b *batch, ev *events.CloudwatchLogsEvent)
 	return nil
 }
 
-func ProcessCWEvent(ctx context.Context, ev *events.CloudwatchLogsEvent, pClient Client) error {
-	batch, err := newBatch(ctx, pClient)
+func ProcessCWEvent(ctx context.Context, ev *events.CloudwatchLogsEvent, oClient otelclient.Client) error {
+	batch, err := otelclient.NewBatch(ctx, oClient)
 	if err != nil {
 		return err
 	}
@@ -56,7 +57,7 @@ func ProcessCWEvent(ctx context.Context, ev *events.CloudwatchLogsEvent, pClient
 		return fmt.Errorf("error parsing log event: %s", err)
 	}
 
-	err = pClient.sendToOtel(ctx, batch)
+	err = oClient.SendToOtel(ctx, batch)
 	if err != nil {
 		return err
 	}

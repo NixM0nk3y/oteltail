@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"oteltail/internal/otelclient"
 
 	"github.com/aws/aws-lambda-go/events"
 )
@@ -26,9 +27,9 @@ type S3ObjectDetail struct {
 	Sequencer string `json:"sequencer"`
 }
 
-type s3EventProcessor func(ctx context.Context, ev *events.S3Event, pc Client) error
+type s3EventProcessor func(ctx context.Context, ev *events.S3Event, oClient otelclient.Client) error
 
-func ProcessEventBridgeEvent(ctx context.Context, ev *events.CloudWatchEvent, pc Client, process s3EventProcessor) error {
+func ProcessEventBridgeEvent(ctx context.Context, ev *events.CloudWatchEvent, oClient otelclient.Client, process s3EventProcessor) error {
 	// lambda-promtail should only be used with S3 object creation events, since those indicate that a new file has been
 	// added to bucket, and need to be fetched and parsed accordingly.
 	if !(ev.Source == "aws.s3" && ev.DetailType == "Object Created") {
@@ -57,5 +58,5 @@ func ProcessEventBridgeEvent(ctx context.Context, ev *events.CloudWatchEvent, pc
 		},
 	}
 
-	return process(ctx, &s3Event, pc)
+	return process(ctx, &s3Event, oClient)
 }

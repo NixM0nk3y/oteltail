@@ -3,24 +3,16 @@ package main
 import (
 	"context"
 	"log/slog"
-	"time"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-lambda-go/lambdacontext"
-	"github.com/grafana/dskit/backoff"
 
 	"oteltail/internal/config"
 	"oteltail/internal/logger"
+	"oteltail/internal/otelclient"
 	"oteltail/internal/promtail"
 	"oteltail/internal/utils"
-)
-
-const (
-	timeout    = 5 * time.Second
-	minBackoff = 100 * time.Millisecond
-	maxBackoff = 30 * time.Second
-	maxRetries = 10
 )
 
 func handler(ctx context.Context, ev map[string]interface{}) error {
@@ -33,13 +25,13 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 
 	vctx := config.ReadEnvConfig(lctx, "OTELTAIL")
 
-	pClient := promtail.NewOtelClient(&promtail.OtelClientConfig{
-		Backoff: &backoff.Config{
-			MinBackoff: minBackoff,
-			MaxBackoff: maxBackoff,
-			MaxRetries: maxRetries,
-		},
+	oClient, err := otelclient.NewOtelClient(vctx, &otelclient.OtelClientConfig{
+		Url: config.GetConfig(vctx).OtelExporterEndpoint.URL,
 	}, log)
+	if err != nil {
+		log.ErrorContext(vctx, "error initiating otel client", "error", err)
+		return err
+	}
 
 	event, err := utils.CheckEventType(ev)
 	if err != nil {
@@ -49,16 +41,16 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 
 	switch evt := event.(type) {
 	case *events.CloudWatchEvent:
-		err = promtail.ProcessEventBridgeEvent(vctx, evt, pClient, promtail.ProcessS3Event)
+		err = promtail.ProcessEventBridgeEvent(vctx, evt, oClient, promtail.ProcessS3Event)
 	case *events.S3Event:
-		err = promtail.ProcessS3Event(vctx, evt, pClient)
+		err = promtail.ProcessS3Event(vctx, evt, oClient)
 	case *events.CloudwatchLogsEvent:
-		err = promtail.ProcessCWEvent(vctx, evt, pClient)
+		err = promtail.ProcessCWEvent(vctx, evt, oClient)
 	case *events.KinesisEvent:
 		if config.GetConfig(vctx).ParseKinesisCwLogs {
-			err = promtail.ProcessKinesisCwEvent(vctx, evt, pClient)
+			err = promtail.ProcessKinesisCwEvent(vctx, evt, oClient)
 		} else {
-			err = promtail.ProcessKinesisEvent(vctx, evt, pClient)
+			err = promtail.ProcessKinesisEvent(vctx, evt, oClient)
 		}
 	case *events.SQSEvent:
 		err = promtail.ProcessSQSEvent(vctx, evt, handler)
@@ -71,7 +63,10 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 
 	if err != nil {
 		log.ErrorContext(vctx, "error processing event", "error", err)
+		return err
 	}
+
+	oClient.LogProcessor.Shutdown(vctx)
 	return err
 }
 

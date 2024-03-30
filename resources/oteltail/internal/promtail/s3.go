@@ -19,6 +19,7 @@ import (
 
 	"oteltail/internal/config"
 	"oteltail/internal/logger"
+	"oteltail/internal/otelclient"
 	"oteltail/internal/utils"
 )
 
@@ -147,7 +148,7 @@ func getS3Client(ctx context.Context, region string) (*s3.Client, error) {
 	return s3Client, nil
 }
 
-func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser) error {
+func parseS3Log(ctx context.Context, b *otelclient.Batch, labels map[string]string, obj io.ReadCloser) error {
 
 	log := logger.GetLogger(ctx)
 
@@ -171,7 +172,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 		model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
 	}
 
-	ls = utils.ApplyLabels(ctx, ls)
+	ls = utils.ApplyResourceAttributes(ctx, ls)
 
 	// extract the timestamp of the nested event and sends the rest as raw json
 	if labels["type"] == CLOUDTRAIL_LOG_TYPE {
@@ -187,7 +188,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			if err != nil {
 				return err
 			}
-			if err := b.add(ctx, entry{ls, trailEntry}); err != nil {
+			if err := b.Add(ctx, otelclient.LogEntry{Entry: trailEntry, Labels: ls}); err != nil {
 				return err
 			}
 		}
@@ -230,7 +231,7 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 			}
 		}
 
-		if err := b.add(ctx, entry{ls, logproto.Entry{
+		if err := b.Add(ctx, otelclient.LogEntry{Labels: ls, Entry: logproto.Entry{
 			Line:      log_line,
 			Timestamp: timestamp,
 		}}); err != nil {
@@ -268,10 +269,10 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	return labels, nil
 }
 
-func ProcessS3Event(ctx context.Context, ev *events.S3Event, pc Client) error {
+func ProcessS3Event(ctx context.Context, ev *events.S3Event, oClient otelclient.Client) error {
 	log := logger.GetLogger(ctx)
 
-	batch, err := newBatch(ctx, pc)
+	batch, err := otelclient.NewBatch(ctx, oClient)
 	if err != nil {
 		return err
 	}
@@ -300,7 +301,7 @@ func ProcessS3Event(ctx context.Context, ev *events.S3Event, pc Client) error {
 		}
 	}
 
-	err = pc.sendToOtel(ctx, batch)
+	err = oClient.SendToOtel(ctx, batch)
 	if err != nil {
 		return err
 	}

@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/kelseyhightower/envconfig"
+	"github.com/mdobak/go-xerrors"
 	"github.com/prometheus/common/model"
-	"golang.org/x/xerrors"
 
 	"oteltail/internal/logger"
 )
@@ -34,23 +34,17 @@ func (w *WriteAddress) Decode(value string) error {
 
 // Configuration is
 type Configuration struct {
-	WriteAddress          WriteAddress `envconfig:"WRITE_ADDRESS" required:"true"`
-	Username              string       `envconfig:"USERNAME"`
-	Password              string       `envconfig:"PASSWORD"`
-	ExtraLabelsRaw        string       `envconfig:"EXTRA_LABELS"`
-	OmitExtraLabelsPrefix bool         `envconfig:"OMIT_EXTRA_LABELS_PREFIX"`
-	DropLabelsRaw         string       `envconfig:"DROP_LABELS"`
-	Tenant                string       `envconfig:"TENANT"`
-	Environment           string       `envconfig:"ENVIRONMENT"`
-	Service               string       `envconfig:"SERVER"`
-	BearerToken           string       `envconfig:"BEARER_TOKEN"`
+	OtelExporterEndpoint  WriteAddress `envconfig:"OTEL_EXPORTER_OTLP_ENDPOINT" required:"true"`
+	OtelInsecure          bool         `envconfig:"OTEL_EXPORTER_INSECURE"`
+	OtelServiceName       string       `envconfig:"OTEL_SERVICE_NAME" required:"true"`
+	ResourceAttributesRaw string       `envconfig:"RESOURCE_ATTRIBUTES"`
+	DropAttributesRaw     string       `envconfig:"DROP_ATTRIBUTES"`
 	KeepStream            bool         `envconfig:"KEEP_STREAM"`
-	BatchSize             int          `envconfig:"BATCH_SIZE" default:"131072"`
-	SkipTlsVerify         bool         `envconfig:"SKIP_TLS_VERIFY"`
+	LogBatchSize          int          `envconfig:"LOG_BATCH_SIZE" default:"5"`
 	PrintLogLine          bool         `envconfig:"PRINT_LOG_LINES"`
 	ParseKinesisCwLogs    bool         `envconfig:"PARSE_KINESIS_CLOUDWATCH_LOGS"`
-	ExtraLabels           model.LabelSet
-	DropLabels            []model.LabelName
+	ResourceAttributes    model.LabelSet
+	DropAttributes        []model.LabelName
 }
 
 var lambdaConfig Configuration
@@ -79,16 +73,16 @@ func ReadEnvConfig(ctx context.Context, namespace string) context.Context {
 		panic(err)
 	}
 
-	log.InfoContext(ctx, "config parse", "write_address", lambdaConfig.WriteAddress.URL.String())
+	log.InfoContext(ctx, "config parse", "OtelExporterEndpoint", lambdaConfig.OtelExporterEndpoint.URL.String())
 
-	lambdaConfig.ExtraLabels, err = parseExtraLabels(ctx, lambdaConfig.ExtraLabelsRaw, lambdaConfig.OmitExtraLabelsPrefix)
+	lambdaConfig.ResourceAttributes, err = parseResourceAttributes(ctx, lambdaConfig.ResourceAttributesRaw)
 
 	if err != nil {
 		log.ErrorContext(ctx, "unable to parse extra labels", "error", err)
 		panic(err)
 	}
 
-	lambdaConfig.DropLabels, err = parseDropLabels()
+	lambdaConfig.DropAttributes, err = parseDropAttributes()
 	if err != nil {
 		log.ErrorContext(ctx, "unable to parse drop labels", "error", err)
 		panic(err)
@@ -112,46 +106,42 @@ func GetConfig(ctx context.Context) *Configuration {
 	return econfig
 }
 
-func parseExtraLabels(ctx context.Context, extraLabelsRaw string, omitPrefix bool) (model.LabelSet, error) {
+func parseResourceAttributes(ctx context.Context, extraResourceAttributesRaw string) (model.LabelSet, error) {
 
 	log := logger.GetLogger(ctx)
 
-	prefix := "__extra_"
-	if omitPrefix {
-		prefix = ""
-	}
-	var extractedLabels = model.LabelSet{}
-	extraLabelsSplit := strings.Split(extraLabelsRaw, ",")
+	var extractedResourceAttributes = model.LabelSet{}
+	extraResourceAttributeSplit := strings.Split(extraResourceAttributesRaw, ",")
 
-	if len(extraLabelsRaw) < 1 {
-		return extractedLabels, nil
+	if len(extraResourceAttributesRaw) < 1 {
+		return extractedResourceAttributes, nil
 	}
 
-	if len(extraLabelsSplit)%2 != 0 {
+	if len(extraResourceAttributeSplit)%2 != 0 {
 		return nil, fmt.Errorf(invalidExtraLabelsError)
 	}
-	for i := 0; i < len(extraLabelsSplit); i += 2 {
-		extractedLabels[model.LabelName(prefix+extraLabelsSplit[i])] = model.LabelValue(extraLabelsSplit[i+1])
+	for i := 0; i < len(extraResourceAttributeSplit); i += 2 {
+		extractedResourceAttributes[model.LabelName(extraResourceAttributeSplit[i])] = model.LabelValue(extraResourceAttributeSplit[i+1])
 	}
-	err := extractedLabels.Validate()
+	err := extractedResourceAttributes.Validate()
 	if err != nil {
 		return nil, err
 	}
-	log.DebugContext(ctx, "extra labels", "labels", extractedLabels)
-	return extractedLabels, nil
+	log.DebugContext(ctx, "extra resource attributes", "ResourceAttributes", extractedResourceAttributes)
+	return extractedResourceAttributes, nil
 }
 
-func parseDropLabels() ([]model.LabelName, error) {
+func parseDropAttributes() ([]model.LabelName, error) {
 	var result []model.LabelName
 
-	if lambdaConfig.DropLabelsRaw != "" {
-		dropLabelsRawSplit := strings.Split(lambdaConfig.DropLabelsRaw, ",")
-		for _, dropLabelRaw := range dropLabelsRawSplit {
-			dropLabel := model.LabelName(dropLabelRaw)
-			if !dropLabel.IsValid() {
-				return []model.LabelName{}, fmt.Errorf("invalid label name %s", dropLabelRaw)
+	if lambdaConfig.DropAttributesRaw != "" {
+		dropAttributesRaw := strings.Split(lambdaConfig.DropAttributesRaw, ",")
+		for _, dropAttributeRaw := range dropAttributesRaw {
+			dropAttribute := model.LabelName(dropAttributeRaw)
+			if !dropAttribute.IsValid() {
+				return []model.LabelName{}, fmt.Errorf("invalid attribute name %s", dropAttributeRaw)
 			}
-			result = append(result, dropLabel)
+			result = append(result, dropAttribute)
 		}
 	}
 

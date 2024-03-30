@@ -145,11 +145,12 @@ func logRecord(l *sdklog.LogData) *logspb.LogRecord {
 	})
 
 	s := &logspb.LogRecord{
-		TimeUnixNano:   uint64(l.Timestamp().UnixNano()),
-		SeverityNumber: logspb.SeverityNumber(l.Severity()),
-		SeverityText:   l.SeverityText(),
-		Body:           logValue(l.Body()),
-		Attributes:     attrs,
+		TimeUnixNano:         uint64(l.Timestamp().UnixNano()),
+		ObservedTimeUnixNano: uint64(l.ObservedTimestamp().UnixNano()),
+		SeverityNumber:       logspb.SeverityNumber(l.Severity()),
+		SeverityText:         l.SeverityText(),
+		Body:                 logValue(l.Body()),
+		Attributes:           attrs,
 		// DroppedAttributesCount: 0,
 		// Flags: 0,
 		TraceId: l.TraceID[:],

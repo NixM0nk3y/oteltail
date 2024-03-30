@@ -14,10 +14,11 @@ import (
 	"github.com/prometheus/common/model"
 
 	"oteltail/internal/config"
+	"oteltail/internal/otelclient"
 	"oteltail/internal/utils"
 )
 
-func parseKinesisEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) error {
+func parseKinesisEvent(ctx context.Context, b otelclient.BatchIf, ev *events.KinesisEvent) error {
 	if ev == nil {
 		return nil
 	}
@@ -30,7 +31,7 @@ func parseKinesisEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) 
 			model.LabelName("__aws_kinesis_event_source_arn"): model.LabelValue(record.EventSourceArn),
 		}
 
-		labels = utils.ApplyLabels(ctx, labels)
+		labels = utils.ApplyResourceAttributes(ctx, labels)
 
 		// Check if the data is gzipped by inspecting the 'data' field
 		if isGzipped(record.Kinesis.Data) {
@@ -38,12 +39,12 @@ func parseKinesisEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) 
 			if err != nil {
 				return err
 			}
-			b.add(ctx, entry{labels, logproto.Entry{
+			b.Add(ctx, otelclient.LogEntry{Labels: labels, Entry: logproto.Entry{
 				Line:      string(uncompressedData),
 				Timestamp: timestamp,
 			}})
 		} else {
-			b.add(ctx, entry{labels, logproto.Entry{
+			b.Add(ctx, otelclient.LogEntry{Labels: labels, Entry: logproto.Entry{
 				Line:      string(record.Kinesis.Data),
 				Timestamp: timestamp,
 			}})
@@ -72,7 +73,7 @@ func cwParse(rawData []byte, ev *events.CloudwatchLogsData) (err error) {
 	return err
 }
 
-func parseKinesisCwEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) error {
+func parseKinesisCwEvent(ctx context.Context, b otelclient.BatchIf, ev *events.KinesisEvent) error {
 	if ev == nil {
 		return nil
 	}
@@ -95,12 +96,12 @@ func parseKinesisCwEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent
 			labels[model.LabelName("__aws_cloudwatch_log_stream")] = model.LabelValue(cwEvents.LogStream)
 		}
 
-		labels = utils.ApplyLabels(ctx, labels)
+		labels = utils.ApplyResourceAttributes(ctx, labels)
 
 		for _, event := range cwEvents.LogEvents {
 			timestamp := time.UnixMilli(event.Timestamp)
 
-			if err := b.add(ctx, entry{labels, logproto.Entry{
+			if err := b.Add(ctx, otelclient.LogEntry{Labels: labels, Entry: logproto.Entry{
 				Line:      event.Message,
 				Timestamp: timestamp,
 			}}); err != nil {
@@ -112,30 +113,30 @@ func parseKinesisCwEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent
 	return nil
 }
 
-func ProcessKinesisEvent(ctx context.Context, ev *events.KinesisEvent, pClient Client) error {
-	batch, _ := newBatch(ctx, pClient)
+func ProcessKinesisEvent(ctx context.Context, ev *events.KinesisEvent, oClient otelclient.Client) error {
+	batch, _ := otelclient.NewBatch(ctx, oClient)
 
 	err := parseKinesisEvent(ctx, batch, ev)
 	if err != nil {
 		return err
 	}
 
-	err = pClient.sendToOtel(ctx, batch)
+	err = oClient.SendToOtel(ctx, batch)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func ProcessKinesisCwEvent(ctx context.Context, ev *events.KinesisEvent, pClient Client) error {
-	batch, _ := newBatch(ctx, pClient)
+func ProcessKinesisCwEvent(ctx context.Context, ev *events.KinesisEvent, oClient otelclient.Client) error {
+	batch, _ := otelclient.NewBatch(ctx, oClient)
 
 	err := parseKinesisCwEvent(ctx, batch, ev)
 	if err != nil {
 		return err
 	}
 
-	err = pClient.sendToOtel(ctx, batch)
+	err = oClient.SendToOtel(ctx, batch)
 	if err != nil {
 		return err
 	}

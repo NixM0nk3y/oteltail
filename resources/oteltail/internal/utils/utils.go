@@ -3,25 +3,44 @@ package utils
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/otel/trace"
 
 	"oteltail/internal/config"
 )
 
-func ApplyLabels(ctx context.Context, labels model.LabelSet) model.LabelSet {
-	finalLabels := labels.Merge(config.GetConfig(ctx).ExtraLabels)
+func ApplyResourceAttributes(ctx context.Context, labels model.LabelSet) model.LabelSet {
+	finalResourceAttributes := labels.Merge(config.GetConfig(ctx).ResourceAttributes)
 
-	for _, dropLabel := range config.GetConfig(ctx).DropLabels {
-		delete(finalLabels, dropLabel)
+	for _, dropDropAttribute := range config.GetConfig(ctx).DropAttributes {
+		delete(finalResourceAttributes, dropDropAttribute)
 	}
 
-	return finalLabels
+	return finalResourceAttributes
+}
+
+func LabelsMapToString(ls model.LabelSet, without ...model.LabelName) string {
+	lstrs := make([]string, 0, len(ls))
+Outer:
+	for l, v := range ls {
+		for _, w := range without {
+			if l == w {
+				continue Outer
+			}
+		}
+		lstrs = append(lstrs, fmt.Sprintf("%s=%q", l, v))
+	}
+
+	sort.Strings(lstrs)
+	return fmt.Sprintf("{%s}", strings.Join(lstrs, ", "))
 }
 
 func CheckEventType(ev map[string]interface{}) (interface{}, error) {
@@ -92,4 +111,44 @@ func GetUnixSecNsec(s string) (sec int64, nsec int64, err error) {
 	nsec = int64(fractionalSec * multiplier)
 
 	return sec, nsec, err
+}
+
+const (
+	traceHeaderDelimiter = ";"
+	traceIDKey           = "Root"
+	sampleFlagKey        = "Sampled"
+	parentIDKey          = "Parent"
+	traceIDVersion       = "1"
+	traceIDDelimiter     = "-"
+
+	traceIDLength           = 35
+	traceIDDelimitterIndex1 = 1
+	traceIDDelimitterIndex2 = 10
+)
+
+var (
+	empty                    = trace.SpanContext{}
+	errMalformedTraceID      = errors.New("cannot decode trace ID from header")
+	errLengthTraceIDHeader   = errors.New("incorrect length of X-Ray trace ID found, 35 character length expected")
+	errInvalidTraceIDVersion = errors.New("invalid X-Ray trace ID header found, does not have valid trace ID version")
+)
+
+func ParseTraceID(xrayTraceID string) (trace.TraceID, error) {
+	if len(xrayTraceID) != traceIDLength {
+		return empty.TraceID(), errLengthTraceIDHeader
+	}
+	if !strings.HasPrefix(xrayTraceID, traceIDVersion) {
+		return empty.TraceID(), errInvalidTraceIDVersion
+	}
+
+	if xrayTraceID[traceIDDelimitterIndex1:traceIDDelimitterIndex1+1] != traceIDDelimiter ||
+		xrayTraceID[traceIDDelimitterIndex2:traceIDDelimitterIndex2+1] != traceIDDelimiter {
+		return empty.TraceID(), errMalformedTraceID
+	}
+
+	epochPart := xrayTraceID[traceIDDelimitterIndex1+1 : traceIDDelimitterIndex2]
+	uniquePart := xrayTraceID[traceIDDelimitterIndex2+1 : traceIDLength]
+
+	result := epochPart + uniquePart
+	return trace.TraceIDFromHex(result)
 }

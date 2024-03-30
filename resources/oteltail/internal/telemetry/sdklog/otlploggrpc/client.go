@@ -14,7 +14,7 @@ import (
 	"oteltail/internal/telemetry/sdklog/otlploggrpc/internal"
 	"oteltail/internal/telemetry/sdklog/otlploggrpc/internal/otlpconfig"
 	"oteltail/internal/telemetry/sdklog/otlploggrpc/internal/retry"
-	"oteltail/internal/telemetry/sdklog/otlploghttp/transform"
+	"oteltail/internal/telemetry/sdklog/otlploggrpc/transform"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"

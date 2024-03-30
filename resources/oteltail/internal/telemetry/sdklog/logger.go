@@ -2,12 +2,13 @@ package sdklog
 
 import (
 	"context"
+	"oteltail/internal/utils"
 
+	"github.com/aws/aws-lambda-go/lambdacontext"
 	"go.opentelemetry.io/otel/log"
 	"go.opentelemetry.io/otel/log/embedded"
 	"go.opentelemetry.io/otel/sdk/instrumentation"
 	"go.opentelemetry.io/otel/sdk/resource"
-	otrace "go.opentelemetry.io/otel/trace"
 )
 
 var _ log.Logger = &logger{}
@@ -21,12 +22,14 @@ type logger struct {
 }
 
 func (l logger) Emit(ctx context.Context, r log.Record) {
-	span := otrace.SpanFromContext(ctx)
+
+	lc, _ := lambdacontext.FromContext(ctx)
+
+	traceid, _ := utils.ParseTraceID(lc.AwsRequestID)
 
 	log := &LogData{
 		Record:   r,
-		TraceID:  span.SpanContext().TraceID(),
-		SpanID:   span.SpanContext().SpanID(),
+		TraceID:  traceid,
 		Resource: l.resource,
 	}
 
