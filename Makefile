@@ -13,8 +13,7 @@ export AWS_REGION ?= eu-west-1
 #
 export AWS_ACCOUNT ?= 074705540277
 
-export CODEBUILD_BUILD_NUMBER ?= 0
-export CODEBUILD_RESOLVED_SOURCE_VERSION ?=$(shell git rev-list -1 HEAD --abbrev-commit)
+export CODE_RESOLVED_SOURCE_VERSION ?=$(shell git rev-list -1 HEAD --abbrev-commit)
 export DATE=$(shell date -u '+%Y%m%d')
 
 # Output helpers
