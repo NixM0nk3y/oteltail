@@ -20,5 +20,6 @@ Resources:
           RESOURCE_ATTRIBUTES: tenant,abc,environment,dev
           OTEL_SERVICE_NAME: oteltail
           OTEL_EXPORTER_INSECURE: true
+          CUSTOM_S3_PATH_REGEX: ^audit-logs\/workspaceId=(?P<workspace>\d+)\/.*
     Metadata:
       BuildMethod: makefile

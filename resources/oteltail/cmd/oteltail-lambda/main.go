@@ -67,6 +67,9 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 	}
 
 	oClient.LogProcessor.Shutdown(vctx)
+
+	log.InfoContext(vctx, "processing complete")
+
 	return err
 }
 

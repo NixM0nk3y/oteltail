@@ -8,9 +8,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.15.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.22.0
 	github.com/cenkalti/backoff/v4 v4.2.0
-	github.com/gogo/protobuf v1.3.2
-	github.com/golang/snappy v0.0.4
-	github.com/grafana/dskit v0.0.0-20230201083518-528d8a7d52f2
 	github.com/grafana/loki v1.6.2-0.20230216091802-4e4359e67c6c
 	github.com/prometheus/common v0.39.0
 	go.opentelemetry.io/otel v1.24.0
@@ -18,13 +15,15 @@ require (
 	go.opentelemetry.io/otel/sdk v1.11.2
 	go.opentelemetry.io/otel/trace v1.24.0
 	go.opentelemetry.io/proto/otlp v0.19.0
-	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2
 )
 
 require (
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logr/logr v1.4.1 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang/snappy v0.0.4 // indirect
+	github.com/grafana/dskit v0.0.0-20230201083518-528d8a7d52f2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.1 // indirect
 	github.com/stretchr/testify v1.8.4 // indirect
 	go.opentelemetry.io/otel/metric v1.24.0 // indirect
@@ -127,7 +126,7 @@ require (
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230110181048-76db0878b65f
 	google.golang.org/grpc v1.52.3
-	google.golang.org/protobuf v1.28.1 // indirect
+	google.golang.org/protobuf v1.28.1
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

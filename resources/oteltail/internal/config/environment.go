@@ -43,6 +43,7 @@ type Configuration struct {
 	LogBatchSize          int          `envconfig:"LOG_BATCH_SIZE" default:"5"`
 	PrintLogLine          bool         `envconfig:"PRINT_LOG_LINES"`
 	ParseKinesisCwLogs    bool         `envconfig:"PARSE_KINESIS_CLOUDWATCH_LOGS"`
+	CustomS3PathRegex     string       `envconfig:"CUSTOM_S3_PATH_REGEX"`
 	ResourceAttributes    model.LabelSet
 	DropAttributes        []model.LabelName
 }

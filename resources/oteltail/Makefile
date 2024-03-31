@@ -45,6 +45,10 @@ lambda/test: lambda/build ## Test a local invoke of the lambda.
 	@sam local invoke Lambda --add-host=host.docker.internal:host-gateway --event ./test/eventbridge-s3.json --template test/template.yaml --debug --env-vars test/environment.json  --region $(AWS_REGION)
 	@$(TASK_BUILD)
 
+lambda/test/custom: lambda/build ## Test a local invoke of the lambda.
+	@sam local invoke Lambda --add-host=host.docker.internal:host-gateway --event ./test/eventbridge-s3-custom.json --template test/template.yaml --debug --env-vars test/environment.json  --region $(AWS_REGION)
+	@$(TASK_BUILD)
+
 collector/start: ## start collector
 	@docker run -p 4317:4317 -v $(PWD)/test/config.yaml:/etc/otelcol-contrib/config.yaml otel/opentelemetry-collector-contrib:${OTEL_VERSION}
 	@$(TASK_BUILD)

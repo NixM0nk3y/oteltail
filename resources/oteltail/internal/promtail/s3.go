@@ -38,6 +38,8 @@ type parserConfig struct {
 	skipHeaderCount int
 	// key of the metadata label to use as a value for the__aws_<logType>_owner label
 	ownerLabelKey string
+	// file is gzip compressed
+	gzipCompressed bool
 }
 
 const (
@@ -49,6 +51,7 @@ const (
 	LB_NLB_TYPE                string = "net"
 	LB_ALB_TYPE                string = "app"
 	WAF_LOG_TYPE               string = "WAFLogs"
+	CUSTOM                     string = "custom"
 )
 
 var (
@@ -90,6 +93,7 @@ var (
 			timestampFormat: time.RFC3339,
 			timestampType:   "string",
 			skipHeaderCount: 1,
+			gzipCompressed:  true,
 		},
 		LB_LOG_TYPE: {
 			logTypeLabel:    "s3_lb",
@@ -98,12 +102,14 @@ var (
 			timestampFormat: time.RFC3339,
 			timestampRegex:  defaultTimestampRegex,
 			timestampType:   "string",
+			gzipCompressed:  true,
 		},
 		CLOUDTRAIL_LOG_TYPE: {
 			logTypeLabel:    "s3_cloudtrail",
 			ownerLabelKey:   "account_id",
 			skipHeaderCount: 3,
 			filenameRegex:   cloudtrailFilenameRegex,
+			gzipCompressed:  true,
 		},
 		CLOUDFRONT_LOG_TYPE: {
 			logTypeLabel:    "s3_cloudfront",
@@ -113,6 +119,7 @@ var (
 			timestampFormat: "2006-01-02\x0915:04:05",
 			timestampType:   "string",
 			skipHeaderCount: 2,
+			gzipCompressed:  true,
 		},
 		WAF_LOG_TYPE: {
 			logTypeLabel:   "s3_waf",
@@ -120,6 +127,11 @@ var (
 			ownerLabelKey:  "account_id",
 			timestampRegex: wafTimestampRegex,
 			timestampType:  "unix",
+			gzipCompressed: true,
+		},
+		CUSTOM: {
+			logTypeLabel:   "custom",
+			gzipCompressed: false,
 		},
 	}
 )
@@ -159,17 +171,33 @@ func parseS3Log(ctx context.Context, b *otelclient.Batch, labels map[string]stri
 		}
 		return fmt.Errorf("could not find parser for type %s", labels["type"])
 	}
-	gzreader, err := gzip.NewReader(obj)
-	if err != nil {
-		return err
+
+	//
+	var reader io.ReadCloser
+	var err error
+
+	if parsers[labels["type"]].gzipCompressed {
+		reader, err = gzip.NewReader(obj)
+		if err != nil {
+			return err
+		}
+	} else {
+		reader = obj
 	}
 
-	scanner := bufio.NewScanner(gzreader)
+	scanner := bufio.NewScanner(reader)
 
 	ls := model.LabelSet{
-		model.LabelName("__aws_log_type"):                                   model.LabelValue(parser.logTypeLabel),
-		model.LabelName(fmt.Sprintf("__aws_%s", parser.logTypeLabel)):       model.LabelValue(labels["src"]),
-		model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel)): model.LabelValue(labels[parser.ownerLabelKey]),
+		model.LabelName("__aws_log_type"): model.LabelValue(parser.logTypeLabel),
+	}
+
+	_, ok = labels["src"]
+	if ok {
+		ls[model.LabelName(fmt.Sprintf("__aws_%s", parser.logTypeLabel))] = model.LabelValue(labels["src"])
+	}
+
+	if parser.ownerLabelKey != "" {
+		ls[model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel))] = model.LabelValue(labels[parser.ownerLabelKey])
 	}
 
 	ls = utils.ApplyResourceAttributes(ctx, ls)
@@ -178,7 +206,7 @@ func parseS3Log(ctx context.Context, b *otelclient.Batch, labels map[string]stri
 	if labels["type"] == CLOUDTRAIL_LOG_TYPE {
 		records := make(chan Record)
 		jsonStream := NewJSONStream(records)
-		go jsonStream.Start(gzreader, parser.skipHeaderCount)
+		go jsonStream.Start(reader, parser.skipHeaderCount)
 		// Stream json file
 		for record := range jsonStream.records {
 			if record.Error != nil {
@@ -207,27 +235,33 @@ func parseS3Log(ctx context.Context, b *otelclient.Batch, labels map[string]stri
 		}
 
 		timestamp := time.Now()
-		match := parser.timestampRegex.FindStringSubmatch(log_line)
-		if len(match) > 0 {
-			if labels["lb_type"] == LB_NLB_TYPE {
-				// NLB logs don't have .SSSSSSZ suffix. RFC3339 requires a TZ specifier, use UTC
-				match[1] += "Z"
-			}
 
-			switch parser.timestampType {
-			case "string":
-				timestamp, err = time.Parse(parser.timestampFormat, match[1])
-				if err != nil {
-					return err
+		//
+		if parser.timestampRegex != nil {
+
+			match := parser.timestampRegex.FindStringSubmatch(log_line)
+
+			if len(match) > 0 {
+				if labels["lb_type"] == LB_NLB_TYPE {
+					// NLB logs don't have .SSSSSSZ suffix. RFC3339 requires a TZ specifier, use UTC
+					match[1] += "Z"
 				}
-			case "unix":
-				sec, nsec, err := utils.GetUnixSecNsec(match[1])
-				if err != nil {
-					return err
+
+				switch parser.timestampType {
+				case "string":
+					timestamp, err = time.Parse(parser.timestampFormat, match[1])
+					if err != nil {
+						return err
+					}
+				case "unix":
+					sec, nsec, err := utils.GetUnixSecNsec(match[1])
+					if err != nil {
+						return err
+					}
+					timestamp = time.Unix(sec, nsec).UTC()
+				default:
+					log.Warn(fmt.Sprintf("timestamp type of %s parser unknown, using current time", labels["type"]))
 				}
-				timestamp = time.Unix(sec, nsec).UTC()
-			default:
-				log.Warn(fmt.Sprintf("timestamp type of %s parser unknown, using current time", labels["type"]))
 			}
 		}
 
@@ -242,7 +276,7 @@ func parseS3Log(ctx context.Context, b *otelclient.Batch, labels map[string]stri
 	return nil
 }
 
-func getLabels(record events.S3EventRecord) (map[string]string, error) {
+func getLabels(ctx context.Context, record events.S3EventRecord) (map[string]string, error) {
 
 	labels := make(map[string]string)
 
@@ -251,7 +285,7 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	labels["bucket_owner"] = record.S3.Bucket.OwnerIdentity.PrincipalID
 	labels["bucket_region"] = record.AWSRegion
 	for key, p := range parsers {
-		if p.filenameRegex.MatchString(labels["key"]) {
+		if p.filenameRegex != nil && p.filenameRegex.MatchString(labels["key"]) {
 			if labels["type"] == "" {
 				labels["type"] = key
 			}
@@ -263,6 +297,20 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 			}
 		}
 	}
+
+	if labels["type"] == "" && config.GetConfig(ctx).CustomS3PathRegex != "" {
+		customPathRegex := regexp.MustCompile(config.GetConfig(ctx).CustomS3PathRegex)
+		if customPathRegex.MatchString(labels["key"]) {
+			labels["type"] = "custom"
+		}
+		match := customPathRegex.FindStringSubmatch(labels["key"])
+		for i, name := range customPathRegex.SubexpNames() {
+			if i != 0 && name != "" && match[i] != "" {
+				labels[name] = match[i]
+			}
+		}
+	}
+
 	if labels["type"] == "" {
 		return labels, fmt.Errorf("type of S3 event could not be determined for object %q", record.S3.Object.Key)
 	}
@@ -277,7 +325,7 @@ func ProcessS3Event(ctx context.Context, ev *events.S3Event, oClient otelclient.
 		return err
 	}
 	for _, record := range ev.Records {
-		labels, err := getLabels(record)
+		labels, err := getLabels(ctx, record)
 		if err != nil {
 			return err
 		}

@@ -29,6 +29,7 @@ export class OtelTail extends Construct {
             removalPolicy: RemovalPolicy.DESTROY,
             versioned: false,
             publicReadAccess: false,
+            autoDeleteObjects: true,
             blockPublicAccess: BlockPublicAccess.BLOCK_ALL,
             eventBridgeEnabled: true,
             lifecycleRules: [
@@ -86,20 +87,24 @@ export class OtelTail extends Construct {
             runtime: Runtime.PROVIDED_AL2023,
             handler: "bootstrap",
             architecture: Architecture.ARM_64,
-            code: Code.fromAsset("./resources/lambda-promtail-otel", {
+            code: Code.fromAsset("./resources/oteltail", {
                 bundling: {
                     image: DockerImage.fromBuild("./resources/buildimage"),
                     command: [...["make", "build-Lambda"]],
                     environment: {
                         HOME: "/tmp",
                         ARTIFACTS_DIR: "/asset-output",
+                        CODE_RESOLVED_SOURCE_VERSION: process.env["CODE_RESOLVED_SOURCE_VERSION"] || "",
                     },
                 },
             }),
             environment: {
                 LOG_LEVEL: "INFO",
-                PRINT_LOG_LINE: "true",
-                WRITE_ADDRESS: "https://httpbin.org/post",
+                PRINT_LOG_LINE: "false",
+                OTEL_EXPORTER_OTLP_ENDPOINT: "https://collector.example.com:4317",
+                RESOURCE_ATTRIBUTES: `tenant,${props.tenant},environment,${props.environment}`,
+                OTEL_SERVICE_NAME: "oteltail",
+                OTEL_EXPORTER_INSECURE: "false",
             },
             tracing: Tracing.ACTIVE,
             logRetention: RetentionDays.ONE_WEEK,
