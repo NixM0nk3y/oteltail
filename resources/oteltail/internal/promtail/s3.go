@@ -341,7 +341,7 @@ func ProcessS3Event(ctx context.Context, ev *events.S3Event, oClient otelclient.
 				ExpectedBucketOwner: aws.String(labels["bucketOwner"]),
 			})
 		if err != nil {
-			return fmt.Errorf("Failed to get object %s from bucket %s on account %s\n, %s", labels["key"], labels["bucket"], labels["bucketOwner"], err)
+			return fmt.Errorf("failed to get object %s from bucket %s on account %s\n, %s", labels["key"], labels["bucket"], labels["bucketOwner"], err)
 		}
 		err = parseS3Log(ctx, batch, labels, obj.Body)
 		if err != nil {
