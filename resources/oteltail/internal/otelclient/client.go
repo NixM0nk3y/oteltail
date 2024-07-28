@@ -35,9 +35,11 @@ const NearlyImmediate = 100 * time.Millisecond
 
 func NewOtelClient(ctx context.Context, cfg *OtelClientConfig, log *slog.Logger) (*OtelClient, error) {
 
+	additionResourceAttributes := append(config.GetConfig(ctx).ResourceAttributes, semconv.ServiceNameKey.String(config.GetConfig(ctx).OtelServiceName))
+
 	resources := resource.NewWithAttributes(
 		semconv.SchemaURL,
-		semconv.ServiceNameKey.String(config.GetConfig(ctx).OtelServiceName),
+		additionResourceAttributes...,
 	)
 
 	opts := []otlploggrpc.Option{

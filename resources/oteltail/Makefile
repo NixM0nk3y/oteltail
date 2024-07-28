@@ -14,7 +14,7 @@ export SAM_CLI_TELEMETRY=0
 VERSION=1.0
 
 # collector version
-OTEL_VERSION=0.97.0
+OTEL_VERSION=0.105.0
 
 # Useful variables
 

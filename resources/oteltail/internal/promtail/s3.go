@@ -200,6 +200,23 @@ func parseS3Log(ctx context.Context, b *otelclient.Batch, labels map[string]stri
 		ls[model.LabelName(fmt.Sprintf("__aws_%s_owner", parser.logTypeLabel))] = model.LabelValue(labels[parser.ownerLabelKey])
 	}
 
+	if labels["type"] == CUSTOM {
+		for key, value := range labels {
+			if key != "type" && key != "" && value != "" {
+				switch key {
+				case "bucket_region":
+					ls[model.LabelName("__aws_bucket_region")] = model.LabelValue(labels["bucket_region"])
+				case "bucket":
+					ls[model.LabelName("__aws_bucket_name")] = model.LabelValue(labels["bucket"])
+				case "key":
+					ls[model.LabelName("__aws_bucket_key")] = model.LabelValue(labels["key"])
+				default:
+					ls[model.LabelName(fmt.Sprintf("__custom_%s", key))] = model.LabelValue(labels[key])
+				}
+			}
+		}
+	}
+
 	ls = utils.ApplyResourceAttributes(ctx, ls)
 
 	// extract the timestamp of the nested event and sends the rest as raw json

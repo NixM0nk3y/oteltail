@@ -18,7 +18,7 @@ import (
 )
 
 func ApplyResourceAttributes(ctx context.Context, labels model.LabelSet) model.LabelSet {
-	finalResourceAttributes := labels.Merge(config.GetConfig(ctx).ResourceAttributes)
+	finalResourceAttributes := labels
 
 	for _, dropDropAttribute := range config.GetConfig(ctx).DropAttributes {
 		delete(finalResourceAttributes, dropDropAttribute)

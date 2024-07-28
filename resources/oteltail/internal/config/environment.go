@@ -9,6 +9,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 	"github.com/mdobak/go-xerrors"
 	"github.com/prometheus/common/model"
+	"go.opentelemetry.io/otel/attribute"
 
 	"oteltail/internal/logger"
 )
@@ -44,7 +45,7 @@ type Configuration struct {
 	PrintLogLine          bool         `envconfig:"PRINT_LOG_LINES"`
 	ParseKinesisCwLogs    bool         `envconfig:"PARSE_KINESIS_CLOUDWATCH_LOGS"`
 	CustomS3PathRegex     string       `envconfig:"CUSTOM_S3_PATH_REGEX"`
-	ResourceAttributes    model.LabelSet
+	ResourceAttributes    []attribute.KeyValue
 	DropAttributes        []model.LabelName
 }
 
@@ -107,11 +108,10 @@ func GetConfig(ctx context.Context) *Configuration {
 	return econfig
 }
 
-func parseResourceAttributes(ctx context.Context, extraResourceAttributesRaw string) (model.LabelSet, error) {
+func parseResourceAttributes(ctx context.Context, extraResourceAttributesRaw string) (extractedResourceAttributes []attribute.KeyValue, err error) {
 
 	log := logger.GetLogger(ctx)
 
-	var extractedResourceAttributes = model.LabelSet{}
 	extraResourceAttributeSplit := strings.Split(extraResourceAttributesRaw, ",")
 
 	if len(extraResourceAttributesRaw) < 1 {
@@ -122,11 +122,10 @@ func parseResourceAttributes(ctx context.Context, extraResourceAttributesRaw str
 		return nil, fmt.Errorf(invalidExtraLabelsError)
 	}
 	for i := 0; i < len(extraResourceAttributeSplit); i += 2 {
-		extractedResourceAttributes[model.LabelName(extraResourceAttributeSplit[i])] = model.LabelValue(extraResourceAttributeSplit[i+1])
-	}
-	err := extractedResourceAttributes.Validate()
-	if err != nil {
-		return nil, err
+		extractedResourceAttributes = append(extractedResourceAttributes, attribute.KeyValue{
+			Key:   attribute.Key(extraResourceAttributeSplit[i]),
+			Value: attribute.StringValue(extraResourceAttributeSplit[i+1]),
+		})
 	}
 	log.DebugContext(ctx, "extra resource attributes", "ResourceAttributes", extractedResourceAttributes)
 	return extractedResourceAttributes, nil

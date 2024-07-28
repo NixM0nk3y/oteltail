@@ -17,7 +17,7 @@ Resources:
           LOG_LEVEL: INFO
           PRINT_LOG_LINES: false
           OTEL_EXPORTER_OTLP_ENDPOINT: https://host.docker.internal:4317
-          RESOURCE_ATTRIBUTES: tenant,abc,environment,dev
+          RESOURCE_ATTRIBUTES: service.tenant,abc,service.environment,dev
           OTEL_SERVICE_NAME: oteltail
           OTEL_EXPORTER_INSECURE: true
           CUSTOM_S3_PATH_REGEX: ^audit-logs\/workspaceId=(?P<workspace>\d+)\/.*
